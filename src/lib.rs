@@ -1,5 +1,9 @@
 pub trait Constraint<T: ?Sized> {
     fn check(&self, actual: &T) -> ConstraintResult;
+
+    fn describe(&self) -> String {
+        std::any::type_name::<Self>().to_string()
+    }
 }
 
 pub struct ConstraintResult {
@@ -200,7 +204,8 @@ pub mod combinators {
             let inner_result = self.inner.check(actual);
             if inner_result.pass {
                 ConstraintResult::fail(format!(
-                    "Expected constraint to fail but it passed: {}",
+                    "Expected constraint not to pass, but it did. Constraint description: {}. Inner message: {}",
+                    self.inner.describe(),
                     inner_result.message
                 ))
             } else {
@@ -341,6 +346,8 @@ pub mod builder {
 
     impl_constraint_methods_for!(AndIsBuilder<L>, AndNotBuilder<L>);
     impl_constraint_methods_for!(OrIsBuilder<L>, OrNotBuilder<L>);
+    impl_constraint_methods_for!(AndBuilder<L>, AndNotBuilder<L>);
+    impl_constraint_methods_for!(OrBuilder<L>, OrNotBuilder<L>);
 
     pub trait Chainable: Sized {
         fn and(self) -> AndBuilder<Self> {
@@ -568,6 +575,28 @@ pub mod builder {
             OrIsBuilder { left: self.left }
         }
     }
+
+    impl<L, R> Combine<R> for AndBuilder<L> {
+        type Output = And<L, R>;
+
+        fn combine(self, right: R) -> Self::Output {
+            And {
+                left: self.left,
+                right,
+            }
+        }
+    }
+
+    impl<L, R> Combine<R> for OrBuilder<L> {
+        type Output = Or<L, R>;
+
+        fn combine(self, right: R) -> Self::Output {
+            Or {
+                left: self.left,
+                right,
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -582,7 +611,6 @@ mod tests {
             5,
             is().equal_to(4)
                 .or()
-                .is()
                 .equal_to(5)
                 .and()
                 .is()
@@ -595,7 +623,6 @@ mod tests {
                 .is()
                 .greater_than(3)
                 .or()
-                .is()
                 .less_than(0)
         );
         assert_that!(
@@ -605,7 +632,6 @@ mod tests {
                 .is()
                 .greater_than(3)
                 .or()
-                .is()
                 .less_than(0)
                 .and()
                 .is()
@@ -617,7 +643,6 @@ mod tests {
             is().not()
                 .constraint(is().equal_to(12039).or().is().equal_to(10382938))
                 .and()
-                .is()
                 .greater_than(3)
         );
     }
@@ -637,14 +662,11 @@ mod tests {
             "hello world",
             is().contains("world")
                 .or()
-                .is()
                 .contains("goodbye")
                 .and()
-                .is()
                 .not()
                 .contains("foo")
                 .and()
-                .is()
                 .constraint(is().constraint(is().constraint(is().constraint(
                     is().constraint(is().constraint(is().not().constraint(is().equal_to("lol"))))
                 ))))
