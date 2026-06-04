@@ -283,14 +283,14 @@ pub mod builder {
                     self.combine(Contains { needle })
                 }
 
-                pub fn true_(self) -> <Self as Combine<EqualTo<bool>>>::Output
+                pub fn truthy(self) -> <Self as Combine<EqualTo<bool>>>::Output
                 where
                     Self: Combine<EqualTo<bool>>,
                 {
                     self.combine(EqualTo { expected: true })
                 }
 
-                pub fn false_(self) -> <Self as Combine<EqualTo<bool>>>::Output
+                pub fn falsey(self) -> <Self as Combine<EqualTo<bool>>>::Output
                 where
                     Self: Combine<EqualTo<bool>>,
                 {
@@ -378,11 +378,11 @@ pub mod builder {
             Contains { needle }
         }
 
-        pub fn true_(self) -> EqualTo<bool> {
+        pub fn truthy(self) -> EqualTo<bool> {
             EqualTo { expected: true }
         }
 
-        pub fn false_(self) -> EqualTo<bool> {
+        pub fn falsey(self) -> EqualTo<bool> {
             EqualTo { expected: false }
         }
 
@@ -421,13 +421,13 @@ pub mod builder {
             }
         }
 
-        pub fn true_(self) -> Not<EqualTo<bool>> {
+        pub fn truthy(self) -> Not<EqualTo<bool>> {
             Not {
                 inner: EqualTo { expected: true },
             }
         }
 
-        pub fn false_(self) -> Not<EqualTo<bool>> {
+        pub fn falsey(self) -> Not<EqualTo<bool>> {
             Not {
                 inner: EqualTo { expected: false },
             }
@@ -475,7 +475,7 @@ pub mod builder {
             }
         }
 
-        pub fn true_(self) -> And<L, Not<EqualTo<bool>>> {
+        pub fn truthy(self) -> And<L, Not<EqualTo<bool>>> {
             And {
                 left: self.left,
                 right: Not {
@@ -484,7 +484,7 @@ pub mod builder {
             }
         }
 
-        pub fn false_(self) -> And<L, Not<EqualTo<bool>>> {
+        pub fn falsey(self) -> And<L, Not<EqualTo<bool>>> {
             And {
                 left: self.left,
                 right: Not {
@@ -538,7 +538,7 @@ pub mod builder {
             }
         }
 
-        pub fn true_(self) -> Or<L, Not<EqualTo<bool>>> {
+        pub fn truthy(self) -> Or<L, Not<EqualTo<bool>>> {
             Or {
                 left: self.left,
                 right: Not {
@@ -547,7 +547,7 @@ pub mod builder {
             }
         }
 
-        pub fn false_(self) -> Or<L, Not<EqualTo<bool>>> {
+        pub fn falsey(self) -> Or<L, Not<EqualTo<bool>>> {
             Or {
                 left: self.left,
                 right: Not {
