@@ -1,6 +1,6 @@
 mod common;
 
-use common::{Const, Probe};
+use common::{Const, EvalExt, Probe};
 use runit::{AlwaysFalse, And, Equal, Expr, IsNone, Not, Or};
 
 const ALWAYS_FALSE_MSG: &str = "Condition will always fail.";
@@ -29,21 +29,21 @@ fn always_false_fails_for_options() {
 
 #[test]
 fn always_false_fails_for_unsized_str() {
-    let r = <AlwaysFalse as Expr<str>>::eval(&AlwaysFalse, "hello");
+    let r = <AlwaysFalse as EvalExt<str>>::eval(&AlwaysFalse, "hello");
     assert!(!r.pass);
     assert_eq!(r.message, ALWAYS_FALSE_MSG);
 }
 
 #[test]
 fn always_false_fails_for_unsized_slice() {
-    let r = <AlwaysFalse as Expr<[u8]>>::eval(&AlwaysFalse, &[1, 2, 3][..]);
+    let r = <AlwaysFalse as EvalExt<[u8]>>::eval(&AlwaysFalse, &[1, 2, 3][..]);
     assert!(!r.pass);
 }
 
 #[test]
 fn always_false_fails_for_dyn_trait_object() {
     let d: &dyn std::fmt::Debug = &5;
-    let r = <AlwaysFalse as Expr<dyn std::fmt::Debug>>::eval(&AlwaysFalse, d);
+    let r = <AlwaysFalse as EvalExt<dyn std::fmt::Debug>>::eval(&AlwaysFalse, d);
     assert!(!r.pass);
 }
 
@@ -482,7 +482,7 @@ fn not_evaluates_inner_exactly_once() {
 #[test]
 fn not_works_on_unsized_str() {
     let e = Not { inner: AlwaysFalse };
-    assert!(<_ as Expr<str>>::eval(&e, "anything").pass);
+    assert!(<_ as EvalExt<str>>::eval(&e, "anything").pass);
 }
 
 // ---------------------------------------------------------------- And
@@ -530,7 +530,7 @@ fn and_right_fails_reports_right_message() {
 }
 
 #[test]
-fn and_pass_returns_fresh_empty_result_ignoring_child_messages() {
+fn and_pass_has_no_message() {
     let r = And {
         left: Const(true, "L note"),
         right: Const(true, "R note"),
@@ -544,7 +544,7 @@ fn and_pass_returns_fresh_empty_result_ignoring_child_messages() {
 fn and_short_circuits_when_left_fails() {
     let (l, lc) = Probe::failing("L");
     let (r, rc) = Probe::passing("R");
-    And { left: l, right: r }.eval(&0);
+    And { left: l, right: r }.check(&0);
     assert_eq!(lc.get(), 1);
     assert_eq!(rc.get(), 0, "right side must not be evaluated");
 }
@@ -553,7 +553,7 @@ fn and_short_circuits_when_left_fails() {
 fn and_evaluates_right_when_left_passes() {
     let (l, lc) = Probe::passing("L");
     let (r, rc) = Probe::failing("R");
-    And { left: l, right: r }.eval(&0);
+    And { left: l, right: r }.check(&0);
     assert_eq!(lc.get(), 1);
     assert_eq!(rc.get(), 1);
 }
@@ -564,9 +564,9 @@ fn and_evaluates_left_before_right() {
     use std::rc::Rc;
     struct Log(&'static str, Rc<RefCell<Vec<&'static str>>>);
     impl Expr<i32> for Log {
-        fn eval(&self, _: &i32) -> runit::ExprResult {
+        fn check(&self, _: &i32) -> bool {
             self.1.borrow_mut().push(self.0);
-            runit::ExprResult::pass()
+            true
         }
     }
     let log = Rc::new(RefCell::new(vec![]));
@@ -636,7 +636,7 @@ fn and_on_unsized_str() {
         left: Const(true, ""),
         right: Const(true, ""),
     };
-    assert!(<_ as Expr<str>>::eval(&e, "s").pass);
+    assert!(<_ as EvalExt<str>>::eval(&e, "s").pass);
 }
 
 #[test]
@@ -675,32 +675,32 @@ fn or_both_fail_combines_messages() {
 }
 
 #[test]
-fn or_left_pass_returns_left_result_verbatim() {
+fn or_left_pass_has_no_message() {
     let r = Or {
         left: Const(true, "left note"),
         right: Const(true, "right note"),
     }
     .eval(&());
     assert!(r.pass);
-    assert_eq!(r.message, "left note");
+    assert_eq!(r.message, "");
 }
 
 #[test]
-fn or_right_pass_returns_right_result_verbatim() {
+fn or_right_pass_has_no_message() {
     let r = Or {
         left: Const(false, "L"),
         right: Const(true, "right note"),
     }
     .eval(&());
     assert!(r.pass);
-    assert_eq!(r.message, "right note");
+    assert_eq!(r.message, "");
 }
 
 #[test]
 fn or_short_circuits_when_left_passes() {
     let (l, lc) = Probe::passing("L");
     let (r, rc) = Probe::passing("R");
-    Or { left: l, right: r }.eval(&0);
+    Or { left: l, right: r }.check(&0);
     assert_eq!(lc.get(), 1);
     assert_eq!(rc.get(), 0, "right side must not be evaluated");
 }
@@ -709,7 +709,7 @@ fn or_short_circuits_when_left_passes() {
 fn or_evaluates_right_when_left_fails() {
     let (l, lc) = Probe::failing("L");
     let (r, rc) = Probe::failing("R");
-    Or { left: l, right: r }.eval(&0);
+    Or { left: l, right: r }.check(&0);
     assert_eq!(lc.get(), 1);
     assert_eq!(rc.get(), 1);
 }
@@ -779,6 +779,7 @@ fn or_inside_and_inside_or_is_indented() {
     );
 }
 
+#[cfg(feature = "alloc")]
 #[test]
 fn or_flattens_through_references_and_boxes() {
     let inner = Or {
@@ -800,58 +801,120 @@ fn or_flattens_through_references_and_boxes() {
 }
 
 #[test]
-fn or_flattens_custom_eval_alternatives_override() {
+fn or_flattens_custom_alternatives_override() {
     // A user-defined OR-like expr can take part in flattening.
+    use std::fmt::{self, Formatter};
     struct AnyOf(Vec<&'static str>);
     impl Expr<()> for AnyOf {
-        fn eval(&self, actual: &()) -> runit::ExprResult {
-            let mut failures = Vec::new();
-            self.eval_alternatives(actual, &mut failures)
-                .unwrap_or_else(|| runit::ExprResult::fail(failures.join(" | ")))
+        fn check(&self, _: &()) -> bool {
+            false
         }
-        fn eval_alternatives(
-            &self,
-            _actual: &(),
-            failures: &mut Vec<String>,
-        ) -> Option<runit::ExprResult> {
-            failures.extend(self.0.iter().map(|s| s.to_string()));
-            None
+        fn explain(&self, _: &(), f: &mut Formatter<'_>) -> fmt::Result {
+            f.write_str(&self.0.join(" | "))
+        }
+        fn alternatives(&self) -> usize {
+            self.0.len()
+        }
+        fn explain_alternatives(&self, _: &(), f: &mut Formatter<'_>) -> fmt::Result {
+            for s in &self.0 {
+                write!(f, "\n  - {s}")?;
+            }
+            Ok(())
         }
     }
     let e = Or {
         left: AnyOf(vec!["x", "y"]),
         right: Const(false, "z"),
     };
+    assert_eq!(e.alternatives(), 3);
     assert_eq!(e.eval(&()).message, "Expected either:\n  - x\n  - y\n  - z");
     assert_eq!(AnyOf(vec!["x", "y"]).eval(&()).message, "x | y");
 }
 
 #[test]
-fn eval_alternatives_default_pushes_single_failure() {
-    let mut failures = Vec::new();
-    assert!(
-        Equal { value: 1 }
-            .eval_alternatives(&2, &mut failures)
-            .is_none()
+fn alternatives_counts() {
+    assert_eq!(<_ as Expr<i32>>::alternatives(&Equal { value: 1 }), 1);
+    assert_eq!(<_ as Expr<i32>>::alternatives(&AlwaysFalse), 1);
+    assert_eq!(<_ as Expr<i32>>::alternatives(&runit::NoAlternatives), 0);
+    assert_eq!(
+        <_ as Expr<i32>>::alternatives(&Not {
+            inner: Or {
+                left: AlwaysFalse,
+                right: AlwaysFalse
+            }
+        }),
+        1
     );
-    assert_eq!(failures, ["Expected 1, got 2"]);
-    let r = Equal { value: 1 }.eval_alternatives(&1, &mut failures);
-    assert!(r.unwrap().pass);
-    assert_eq!(failures.len(), 1);
+    assert_eq!(
+        <_ as Expr<i32>>::alternatives(&And {
+            left: Or {
+                left: AlwaysFalse,
+                right: AlwaysFalse
+            },
+            right: AlwaysFalse
+        }),
+        1
+    );
+    assert_eq!(
+        <_ as Expr<i32>>::alternatives(&Or {
+            left: Or {
+                left: AlwaysFalse,
+                right: runit::NoAlternatives
+            },
+            right: Or {
+                left: AlwaysFalse,
+                right: AlwaysFalse
+            },
+        }),
+        3
+    );
+}
+
+#[test]
+fn precedence_of_primitives() {
+    use runit::Precedence;
+    assert_eq!(
+        <_ as Expr<i32>>::precedence(&Equal { value: 1 }),
+        Precedence::Atom
+    );
+    assert_eq!(
+        <_ as Expr<i32>>::precedence(&Not { inner: AlwaysFalse }),
+        Precedence::Atom
+    );
+    assert_eq!(
+        <_ as Expr<i32>>::precedence(&And {
+            left: AlwaysFalse,
+            right: AlwaysFalse
+        }),
+        Precedence::And
+    );
+    assert_eq!(
+        <_ as Expr<i32>>::precedence(&Or {
+            left: AlwaysFalse,
+            right: AlwaysFalse
+        }),
+        Precedence::Or
+    );
+    // An OR with an empty side takes the other side's precedence.
+    assert_eq!(
+        <_ as Expr<i32>>::precedence(&Or {
+            left: runit::NoAlternatives,
+            right: And {
+                left: AlwaysFalse,
+                right: AlwaysFalse
+            },
+        }),
+        Precedence::And
+    );
+    assert!(Precedence::Or < Precedence::And && Precedence::And < Precedence::Atom);
 }
 
 #[test]
 fn no_alternatives_contributes_nothing() {
     use runit::NoAlternatives;
-    let mut failures = Vec::new();
-    assert!(
-        NoAlternatives
-            .eval_alternatives(&0, &mut failures)
-            .is_none()
-    );
-    assert!(failures.is_empty());
-    assert_eq!(<_ as Expr<i32>>::describe(&NoAlternatives), "");
-    let r = NoAlternatives.eval(&0);
+    assert_eq!(<_ as Expr<i32>>::alternatives(&NoAlternatives), 0);
+    assert_eq!(<_ as EvalExt<i32>>::describe_string(&NoAlternatives), "");
+    let r = <_ as EvalExt<i32>>::eval(&NoAlternatives, &0);
     assert!(!r.pass);
     assert_eq!(r.message, "No alternatives to match.");
 
@@ -860,14 +923,32 @@ fn no_alternatives_contributes_nothing() {
         right: Equal { value: 3 },
     };
     assert_eq!(e.eval(&4).message, "Expected 3, got 4");
+    assert_eq!(e.describe_string(), "equal to 3");
+    let e = Or {
+        left: Equal { value: 3 },
+        right: NoAlternatives,
+    };
+    assert_eq!(e.eval(&4).message, "Expected 3, got 4");
     let e = Or {
         left: NoAlternatives,
         right: NoAlternatives,
     };
     assert_eq!(
-        <_ as Expr<i32>>::eval(&e, &0).message,
+        <_ as EvalExt<i32>>::eval(&e, &0).message,
         "No alternatives to match."
     );
+}
+
+#[test]
+fn explain_is_lazy_and_rechecks_only_on_failure() {
+    // Checking never formats; explaining a failed AND re-checks the left side to find the culprit.
+    let (l, lc) = Probe::passing("L");
+    let (r, rc) = Probe::failing("R");
+    let e = And { left: l, right: r };
+    assert!(!e.check(&0));
+    assert_eq!((lc.get(), rc.get()), (1, 1));
+    assert_eq!(e.explanation(&0).to_string(), "R");
+    assert_eq!((lc.get(), rc.get()), (2, 1));
 }
 
 #[test]
@@ -907,7 +988,7 @@ fn or_on_unsized_slice() {
         left: AlwaysFalse,
         right: Not { inner: AlwaysFalse },
     };
-    assert!(<_ as Expr<[i32]>>::eval(&e, &[1, 2][..]).pass);
+    assert!(<_ as EvalExt<[i32]>>::eval(&e, &[1, 2][..]).pass);
 }
 
 // ---------------------------------------------------------------- mixed

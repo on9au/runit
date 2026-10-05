@@ -5,7 +5,7 @@
 
 mod common;
 
-use common::{check_ints, check_options};
+use common::{EvalExt, check_ints, check_options};
 use runit::{Expr, Is, Negated, PendingAnd, PendingOr};
 
 fn either(items: &[&str]) -> String {
@@ -713,32 +713,32 @@ fn double_negation_message_has_no_not() {
 struct GreaterThan(i32);
 
 impl Expr<i32> for GreaterThan {
-    fn eval(&self, actual: &i32) -> runit::ExprResult {
-        if *actual > self.0 {
-            runit::ExprResult::pass()
-        } else {
-            runit::ExprResult::fail(format!("Expected > {}, got {}", self.0, actual))
-        }
+    fn check(&self, actual: &i32) -> bool {
+        *actual > self.0
     }
 
-    fn describe(&self) -> String {
-        format!("greater than {}", self.0)
+    fn explain(&self, actual: &i32, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Expected > {}, got {}", self.0, actual)
+    }
+
+    fn describe(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "greater than {}", self.0)
     }
 }
 
 struct StartsWith(&'static str);
 
 impl Expr<str> for StartsWith {
-    fn eval(&self, actual: &str) -> runit::ExprResult {
-        if actual.starts_with(self.0) {
-            runit::ExprResult::pass()
-        } else {
-            runit::ExprResult::fail(format!("Expected {actual:?} to start with {:?}", self.0))
-        }
+    fn check(&self, actual: &str) -> bool {
+        actual.starts_with(self.0)
     }
 
-    fn describe(&self) -> String {
-        format!("starting with {:?}", self.0)
+    fn explain(&self, actual: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Expected {actual:?} to start with {:?}", self.0)
+    }
+
+    fn describe(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "starting with {:?}", self.0)
     }
 }
 
@@ -816,7 +816,7 @@ fn matches_on_unsized_str() {
         ])
     );
     assert_eq!(
-        e.describe(),
+        e.describe_string(),
         "starting with \"http://\" or starting with \"https://\""
     );
     runit::Assert::that("http://x", e);
@@ -834,6 +834,7 @@ fn matches_message_uses_custom_messages() {
     );
 }
 
+#[cfg(feature = "alloc")]
 #[test]
 fn matches_accepts_references_and_boxes() {
     let gt = GreaterThan(2);
@@ -848,12 +849,12 @@ fn matches_accepts_references_and_boxes() {
 fn matches_with_closure_adapter() {
     struct Pred<F>(F, &'static str);
     impl<F: Fn(&i32) -> bool> Expr<i32> for Pred<F> {
-        fn eval(&self, actual: &i32) -> runit::ExprResult {
-            if (self.0)(actual) {
-                runit::ExprResult::pass()
-            } else {
-                runit::ExprResult::fail(format!("Expected {}, got {actual}", self.1))
-            }
+        fn check(&self, actual: &i32) -> bool {
+            (self.0)(actual)
+        }
+
+        fn explain(&self, actual: &i32, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "Expected {}, got {actual}", self.1)
         }
     }
     let e = Is::matches(Pred(|x: &i32| x % 2 == 0, "even"))

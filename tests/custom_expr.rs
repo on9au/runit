@@ -2,34 +2,34 @@
 
 mod common;
 
-use common::panic_message;
-use runit::{AlwaysFalse, And, Assert, Equal, Expr, ExprResult, Is, IsNone, Not, Or};
+use common::{EvalExt, panic_message};
+use runit::{AlwaysFalse, And, Assert, Equal, Expr, Is, IsNone, Not, Or};
 
 struct GreaterThan(i32);
 
 impl Expr<i32> for GreaterThan {
-    fn eval(&self, actual: &i32) -> ExprResult {
-        if *actual > self.0 {
-            ExprResult::pass()
-        } else {
-            ExprResult::fail(format!("Expected > {}, got {}", self.0, actual))
-        }
+    fn check(&self, actual: &i32) -> bool {
+        *actual > self.0
+    }
+
+    fn explain(&self, actual: &i32, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Expected > {}, got {}", self.0, actual)
     }
 }
 
 struct LessThan(i32);
 
 impl Expr<i32> for LessThan {
-    fn eval(&self, actual: &i32) -> ExprResult {
-        if *actual < self.0 {
-            ExprResult::pass()
-        } else {
-            ExprResult::fail(format!("Expected < {}, got {}", self.0, actual))
-        }
+    fn check(&self, actual: &i32) -> bool {
+        *actual < self.0
     }
 
-    fn describe(&self) -> String {
-        format!("less than {}", self.0)
+    fn explain(&self, actual: &i32, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Expected < {}, got {}", self.0, actual)
+    }
+
+    fn describe(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "less than {}", self.0)
     }
 }
 
@@ -37,43 +37,47 @@ impl Expr<i32> for LessThan {
 struct AtMost<T>(T);
 
 impl<T: PartialOrd + std::fmt::Debug> Expr<T> for AtMost<T> {
-    fn eval(&self, actual: &T) -> ExprResult {
-        if *actual <= self.0 {
-            ExprResult::pass()
-        } else {
-            ExprResult::fail(format!("Expected <= {:?}, got {:?}", self.0, actual))
-        }
+    fn check(&self, actual: &T) -> bool {
+        *actual <= self.0
+    }
+
+    fn explain(&self, actual: &T, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Expected <= {:?}, got {:?}", self.0, actual)
     }
 }
 
 struct StartsWith(&'static str);
 
 impl Expr<str> for StartsWith {
-    fn eval(&self, actual: &str) -> ExprResult {
-        if actual.starts_with(self.0) {
-            ExprResult::pass()
-        } else {
-            ExprResult::fail(format!("Expected {actual:?} to start with {:?}", self.0))
-        }
+    fn check(&self, actual: &str) -> bool {
+        actual.starts_with(self.0)
+    }
+
+    fn explain(&self, actual: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Expected {actual:?} to start with {:?}", self.0)
     }
 }
 
 // String delegates to str so the same expr works for both.
 impl Expr<String> for StartsWith {
-    fn eval(&self, actual: &String) -> ExprResult {
-        <Self as Expr<str>>::eval(self, actual)
+    fn check(&self, actual: &String) -> bool {
+        <Self as Expr<str>>::check(self, actual)
+    }
+
+    fn explain(&self, actual: &String, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        <Self as Expr<str>>::explain(self, actual, f)
     }
 }
 
 struct Contains<T>(T);
 
 impl<T: PartialEq + std::fmt::Debug> Expr<[T]> for Contains<T> {
-    fn eval(&self, actual: &[T]) -> ExprResult {
-        if actual.contains(&self.0) {
-            ExprResult::pass()
-        } else {
-            ExprResult::fail(format!("Expected {actual:?} to contain {:?}", self.0))
-        }
+    fn check(&self, actual: &[T]) -> bool {
+        actual.contains(&self.0)
+    }
+
+    fn explain(&self, actual: &[T], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Expected {actual:?} to contain {:?}", self.0)
     }
 }
 
@@ -81,12 +85,12 @@ impl<T: PartialEq + std::fmt::Debug> Expr<[T]> for Contains<T> {
 struct EqualsRef<'a, T>(&'a T);
 
 impl<T: PartialEq> Expr<T> for EqualsRef<'_, T> {
-    fn eval(&self, actual: &T) -> ExprResult {
-        if self.0 == actual {
-            ExprResult::pass()
-        } else {
-            ExprResult::fail("not equal")
-        }
+    fn check(&self, actual: &T) -> bool {
+        self.0 == actual
+    }
+
+    fn explain(&self, _actual: &T, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("not equal")
     }
 }
 
@@ -119,10 +123,10 @@ fn generic_custom_expr_over_several_types() {
 
 #[test]
 fn custom_expr_on_str_and_string() {
-    assert!(<_ as Expr<str>>::eval(&StartsWith("ab"), "abc").pass);
+    assert!(<_ as EvalExt<str>>::eval(&StartsWith("ab"), "abc").pass);
     assert!(StartsWith("ab").eval(&String::from("abc")).pass);
     assert_eq!(
-        <_ as Expr<str>>::eval(&StartsWith("x"), "abc").message,
+        <_ as EvalExt<str>>::eval(&StartsWith("x"), "abc").message,
         "Expected \"abc\" to start with \"x\""
     );
 }
@@ -148,14 +152,18 @@ fn custom_expr_with_interior_state() {
     use std::cell::Cell;
     struct PassesFirstNTimes(Cell<u32>);
     impl Expr<()> for PassesFirstNTimes {
-        fn eval(&self, _: &()) -> ExprResult {
+        fn check(&self, _: &()) -> bool {
             let n = self.0.get();
             if n == 0 {
-                ExprResult::fail("exhausted")
+                false
             } else {
                 self.0.set(n - 1);
-                ExprResult::pass()
+                true
             }
+        }
+
+        fn explain(&self, _: &(), f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("exhausted")
         }
     }
     let e = PassesFirstNTimes(Cell::new(2));
@@ -238,7 +246,7 @@ fn custom_unsized_exprs_compose() {
         ("ftp://a", false),
         ("", false),
     ] {
-        assert_eq!(<_ as Expr<str>>::eval(&e, s).pass, ok, "{s:?}");
+        assert_eq!(<_ as EvalExt<str>>::eval(&e, s).pass, ok, "{s:?}");
     }
 }
 
@@ -277,54 +285,60 @@ fn dyn_expr_over_unsized_type() {
 #[test]
 fn dyn_expr_describe_dispatches_dynamically() {
     let e: Box<dyn Expr<i32>> = Box::new(LessThan(3));
-    assert_eq!(e.describe(), "less than 3");
+    assert_eq!(e.describe_string(), "less than 3");
 }
 
 // ---------------------------------------------------------------- describe
 
 #[test]
 fn describe_default_is_type_name() {
-    let d = <GreaterThan as Expr<i32>>::describe(&GreaterThan(1));
+    let d = <GreaterThan as EvalExt<i32>>::describe_string(&GreaterThan(1));
     assert!(d.ends_with("GreaterThan"), "{d}");
     assert!(d.contains("custom_expr"), "{d}");
 }
 
 #[test]
 fn describe_can_be_overridden() {
-    assert_eq!(LessThan(9).describe(), "less than 9");
+    assert_eq!(LessThan(9).describe_string(), "less than 9");
 }
 
 #[test]
 fn describe_for_generic_custom_expr_includes_type_param() {
-    let d = <AtMost<u8> as Expr<u8>>::describe(&AtMost(1u8));
+    let d = <AtMost<u8> as EvalExt<u8>>::describe_string(&AtMost(1u8));
     assert!(d.contains("AtMost<u8>"), "{d}");
 }
 
 #[test]
 fn describe_builtins() {
-    assert_eq!(<IsNone as Expr<Option<i32>>>::describe(&IsNone), "None");
     assert_eq!(
-        <AlwaysFalse as Expr<i32>>::describe(&AlwaysFalse),
+        <IsNone as EvalExt<Option<i32>>>::describe_string(&IsNone),
+        "None"
+    );
+    assert_eq!(
+        <AlwaysFalse as EvalExt<i32>>::describe_string(&AlwaysFalse),
         "always false"
     );
-    assert_eq!(Equal { value: 1 }.describe(), "equal to 1");
-    assert_eq!(Equal { value: "s" }.describe(), "equal to \"s\"");
-    assert_eq!(Equal { value: Some(1) }.describe(), "equal to Some(1)");
+    assert_eq!(Equal { value: 1 }.describe_string(), "equal to 1");
+    assert_eq!(Equal { value: "s" }.describe_string(), "equal to \"s\"");
     assert_eq!(
-        <Not<IsNone> as Expr<Option<i32>>>::describe(&Not { inner: IsNone }),
+        Equal { value: Some(1) }.describe_string(),
+        "equal to Some(1)"
+    );
+    assert_eq!(
+        <Not<IsNone> as EvalExt<Option<i32>>>::describe_string(&Not { inner: IsNone }),
         "not None"
     );
 }
 
 #[test]
 fn describe_combinators_include_children() {
-    let d = <_ as Expr<()>>::describe(&And {
+    let d = <_ as EvalExt<()>>::describe_string(&And {
         left: AlwaysFalse,
         right: Not { inner: AlwaysFalse },
     });
     assert_eq!(d, "always false and not always false");
 
-    let d = <_ as Expr<Option<i32>>>::describe(&Or {
+    let d = <_ as EvalExt<Option<i32>>>::describe_string(&Or {
         left: IsNone,
         right: Equal { value: Some(1) },
     });
@@ -343,7 +357,7 @@ fn describe_parenthesizes_or_inside_and() {
         },
     };
     assert_eq!(
-        e.describe(),
+        e.describe_string(),
         "(equal to 1 or equal to 2) and not equal to 3"
     );
 }
@@ -357,7 +371,10 @@ fn describe_does_not_parenthesize_and_inside_or() {
         },
         right: Equal { value: 3 },
     };
-    assert_eq!(e.describe(), "equal to 1 and equal to 2 or equal to 3");
+    assert_eq!(
+        e.describe_string(),
+        "equal to 1 and equal to 2 or equal to 3"
+    );
 }
 
 #[test]
@@ -368,26 +385,26 @@ fn describe_parenthesizes_compound_inside_not() {
             right: Equal { value: 2 },
         },
     };
-    assert_eq!(e.describe(), "not (equal to 1 or equal to 2)");
+    assert_eq!(e.describe_string(), "not (equal to 1 or equal to 2)");
     let e = Not {
         inner: And {
             left: Equal { value: 1 },
             right: Equal { value: 2 },
         },
     };
-    assert_eq!(e.describe(), "not (equal to 1 and equal to 2)");
+    assert_eq!(e.describe_string(), "not (equal to 1 and equal to 2)");
 }
 
 #[test]
 fn describe_uses_child_overrides() {
     let e = Not { inner: LessThan(3) };
-    assert_eq!(e.describe(), "not less than 3");
+    assert_eq!(e.describe_string(), "not less than 3");
     assert_eq!(e.eval(&1).message, "Expected not less than 3, but it was");
 }
 
 #[test]
 fn describe_falls_back_to_type_name_for_children_without_override() {
-    let d = <_ as Expr<i32>>::describe(&Not {
+    let d = <_ as EvalExt<i32>>::describe_string(&Not {
         inner: GreaterThan(3),
     });
     assert!(d.starts_with("not "), "{d}");
@@ -396,17 +413,20 @@ fn describe_falls_back_to_type_name_for_children_without_override() {
 
 #[test]
 fn describe_builder_query() {
-    assert_eq!(<_ as Expr<i32>>::describe(&Is::equal_to(1)), "equal to 1");
     assert_eq!(
-        <_ as Expr<i32>>::describe(&Is::equal_to(1).or().not().equal_to(2)),
+        <_ as EvalExt<i32>>::describe_string(&Is::equal_to(1)),
+        "equal to 1"
+    );
+    assert_eq!(
+        <_ as EvalExt<i32>>::describe_string(&Is::equal_to(1).or().not().equal_to(2)),
         "equal to 1 or not equal to 2"
     );
     assert_eq!(
-        <_ as Expr<Option<i32>>>::describe(&Is::none().and().not().none()),
+        <_ as EvalExt<Option<i32>>>::describe_string(&Is::none().and().not().none()),
         "None and not None"
     );
     assert_eq!(
-        <_ as Expr<i32>>::describe(
+        <_ as EvalExt<i32>>::describe_string(
             &Is::equal_to(1)
                 .or()
                 .equal_to(2)
@@ -420,15 +440,26 @@ fn describe_builder_query() {
     );
 }
 
+#[cfg(feature = "alloc")]
 #[test]
 fn describe_forwards_through_pointers() {
     let e = LessThan(4);
-    assert_eq!(<&LessThan as Expr<i32>>::describe(&&e), "less than 4");
-    assert_eq!(Box::new(LessThan(4)).describe(), "less than 4");
-    assert_eq!(std::rc::Rc::new(LessThan(4)).describe(), "less than 4");
-    assert_eq!(std::sync::Arc::new(LessThan(4)).describe(), "less than 4");
+    assert_eq!(
+        <&LessThan as EvalExt<i32>>::describe_string(&&e),
+        "less than 4"
+    );
+    assert_eq!(Box::new(LessThan(4)).describe_string(), "less than 4");
+    assert_eq!(
+        std::rc::Rc::new(LessThan(4)).describe_string(),
+        "less than 4"
+    );
+    assert_eq!(
+        std::sync::Arc::new(LessThan(4)).describe_string(),
+        "less than 4"
+    );
 }
 
+#[cfg(feature = "alloc")]
 #[test]
 fn pointer_exprs_evaluate_like_their_target() {
     let e = GreaterThan(0);
@@ -438,11 +469,11 @@ fn pointer_exprs_evaluate_like_their_target() {
     let arc: std::sync::Arc<dyn Expr<i32>> = std::sync::Arc::new(GreaterThan(0));
     for x in common::INTS {
         let want = x > 0;
-        assert_eq!(<&GreaterThan as Expr<i32>>::eval(&&e, &x).pass, want);
-        assert_eq!(Expr::eval(&r, &x).pass, want);
-        assert_eq!(Expr::eval(&b, &x).pass, want);
-        assert_eq!(Expr::eval(&rc, &x).pass, want);
-        assert_eq!(Expr::eval(&arc, &x).pass, want);
+        assert_eq!(<&GreaterThan as EvalExt<i32>>::eval(&&e, &x).pass, want);
+        assert_eq!(EvalExt::eval(&r, &x).pass, want);
+        assert_eq!(EvalExt::eval(&b, &x).pass, want);
+        assert_eq!(EvalExt::eval(&rc, &x).pass, want);
+        assert_eq!(EvalExt::eval(&arc, &x).pass, want);
     }
 }
 

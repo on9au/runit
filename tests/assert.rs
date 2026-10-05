@@ -1,7 +1,7 @@
 mod common;
 
-use common::{Const, assert_no_panic, panic_message};
-use runit::{AlwaysFalse, And, Assert, Equal, Expr, ExprResult, Is, IsNone, Not, Or};
+use common::{Const, EvalExt, assert_no_panic, panic_message};
+use runit::{AlwaysFalse, And, Assert, Equal, Expr, Is, IsNone, Not, Or};
 
 #[test]
 fn passing_assertion_does_not_panic() {
@@ -69,6 +69,7 @@ fn reusing_an_expr_by_reference() {
     );
 }
 
+#[cfg(feature = "alloc")]
 #[test]
 fn boxed_dyn_expr_works_with_assert() {
     let e: Box<dyn Expr<i32>> = Box::new(Is::not().equal_to(0));
@@ -76,6 +77,7 @@ fn boxed_dyn_expr_works_with_assert() {
     Assert::that(&2, e);
 }
 
+#[cfg(feature = "alloc")]
 #[test]
 fn rc_and_arc_exprs_work_with_assert() {
     let rc = std::rc::Rc::new(Is::equal_to(5));
@@ -162,12 +164,12 @@ fn raw_primitives_work_with_assert() {
 fn assert_with_unsized_str() {
     struct NonEmpty;
     impl Expr<str> for NonEmpty {
-        fn eval(&self, actual: &str) -> ExprResult {
-            if actual.is_empty() {
-                ExprResult::fail("Expected non-empty string")
-            } else {
-                ExprResult::pass()
-            }
+        fn check(&self, actual: &str) -> bool {
+            !actual.is_empty()
+        }
+
+        fn explain(&self, _actual: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.write_str("Expected non-empty string")
         }
     }
     Assert::that("hello", NonEmpty);
@@ -181,12 +183,12 @@ fn assert_with_unsized_str() {
 fn assert_with_unsized_slice() {
     struct Sorted;
     impl Expr<[i32]> for Sorted {
-        fn eval(&self, actual: &[i32]) -> ExprResult {
-            if actual.windows(2).all(|w| w[0] <= w[1]) {
-                ExprResult::pass()
-            } else {
-                ExprResult::fail(format!("Expected sorted, got {actual:?}"))
-            }
+        fn check(&self, actual: &[i32]) -> bool {
+            actual.windows(2).all(|w| w[0] <= w[1])
+        }
+
+        fn explain(&self, actual: &[i32], f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "Expected sorted, got {actual:?}")
         }
     }
     Assert::that(&[1, 2, 3][..], Sorted);
@@ -201,12 +203,12 @@ fn assert_with_unsized_slice() {
 fn assert_with_unsized_combinators() {
     struct Len(usize);
     impl Expr<str> for Len {
-        fn eval(&self, actual: &str) -> ExprResult {
-            if actual.len() == self.0 {
-                ExprResult::pass()
-            } else {
-                ExprResult::fail(format!("Expected len {}, got {}", self.0, actual.len()))
-            }
+        fn check(&self, actual: &str) -> bool {
+            actual.len() == self.0
+        }
+
+        fn explain(&self, actual: &str, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "Expected len {}, got {}", self.0, actual.len())
         }
     }
     Assert::that(
@@ -233,13 +235,21 @@ fn assert_with_unsized_combinators() {
 fn assert_with_dyn_trait_actual() {
     struct DebugContains(&'static str);
     impl Expr<dyn std::fmt::Debug> for DebugContains {
-        fn eval(&self, actual: &dyn std::fmt::Debug) -> ExprResult {
-            let s = format!("{actual:?}");
-            if s.contains(self.0) {
-                ExprResult::pass()
-            } else {
-                ExprResult::fail(format!("{s:?} does not contain {:?}", self.0))
-            }
+        fn check(&self, actual: &dyn std::fmt::Debug) -> bool {
+            format!("{actual:?}").contains(self.0)
+        }
+
+        fn explain(
+            &self,
+            actual: &dyn std::fmt::Debug,
+            f: &mut std::fmt::Formatter<'_>,
+        ) -> std::fmt::Result {
+            write!(
+                f,
+                "{:?} does not contain {:?}",
+                format!("{actual:?}"),
+                self.0
+            )
         }
     }
     let v: &dyn std::fmt::Debug = &vec![1, 2, 3];

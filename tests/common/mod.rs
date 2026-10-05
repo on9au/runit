@@ -1,10 +1,38 @@
 #![allow(dead_code)]
 
 use std::cell::Cell;
+use std::fmt::{self, Formatter};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::rc::Rc;
 
-use runit::{Expr, ExprResult};
+use runit::{Description, Explanation, Expr};
+
+/// The outcome of evaluating an expression, with its failure message rendered eagerly.
+/// Test-only convenience over `Expr::check` + `Expr::explanation`.
+#[derive(Debug, PartialEq)]
+pub struct Outcome {
+    pub pass: bool,
+    pub message: String,
+}
+
+pub trait EvalExt<T: ?Sized>: Expr<T> {
+    /// Checks `actual`, rendering the explanation only on failure.
+    fn eval(&self, actual: &T) -> Outcome {
+        let pass = self.check(actual);
+        let message = if pass {
+            String::new()
+        } else {
+            Explanation::new(self, actual).to_string()
+        };
+        Outcome { pass, message }
+    }
+
+    fn describe_string(&self) -> String {
+        Description::<Self, T>::new(self).to_string()
+    }
+}
+
+impl<T: ?Sized, E: Expr<T> + ?Sized> EvalExt<T> for E {}
 
 /// Runs `f`, expecting it to panic, and returns the panic message.
 pub fn panic_message<F: FnOnce()>(f: F) -> String {
@@ -30,7 +58,7 @@ pub fn assert_no_panic<F: FnOnce()>(f: F) {
     }
 }
 
-/// An expression with a fixed outcome that counts how often it is evaluated.
+/// An expression with a fixed outcome that counts how often it is checked.
 pub struct Probe {
     pub pass: bool,
     pub message: &'static str,
@@ -60,16 +88,17 @@ impl Probe {
 }
 
 impl<T: ?Sized> Expr<T> for Probe {
-    fn eval(&self, _actual: &T) -> ExprResult {
+    fn check(&self, _actual: &T) -> bool {
         self.calls.set(self.calls.get() + 1);
-        ExprResult {
-            pass: self.pass,
-            message: self.message.to_string(),
-        }
+        self.pass
     }
 
-    fn describe(&self) -> String {
-        self.message.to_string()
+    fn explain(&self, _actual: &T, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.message)
+    }
+
+    fn describe(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.message)
     }
 }
 
@@ -77,15 +106,16 @@ impl<T: ?Sized> Expr<T> for Probe {
 pub struct Const(pub bool, pub &'static str);
 
 impl<T: ?Sized> Expr<T> for Const {
-    fn eval(&self, _actual: &T) -> ExprResult {
-        ExprResult {
-            pass: self.0,
-            message: self.1.to_string(),
-        }
+    fn check(&self, _actual: &T) -> bool {
+        self.0
     }
 
-    fn describe(&self) -> String {
-        self.1.to_string()
+    fn explain(&self, _actual: &T, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.1)
+    }
+
+    fn describe(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        f.write_str(self.1)
     }
 }
 
