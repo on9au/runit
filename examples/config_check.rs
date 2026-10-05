@@ -60,8 +60,12 @@ fn rules() -> Vec<Rule> {
             ),
         ),
         rule(
-            "port is unprivileged",
-            Is::field("port", |c: &Config| &c.port, Is::in_range(1024..=49151)),
+            "port is 80, 443 or unprivileged",
+            Is::field(
+                "port",
+                |c: &Config| &c.port,
+                Is::one_of([80, 443]).or().in_range(1024..=49151),
+            ),
         ),
         rule(
             "worker count is sane",
