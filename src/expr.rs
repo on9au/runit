@@ -57,6 +57,21 @@ pub trait Expr<T: ?Sized> {
         Explanation::new(self, actual)
     }
 
+    /// Checks `actual`, returning why it fails as the error.
+    ///
+    /// The error borrows the expression and the value, so nothing is formatted or
+    /// allocated unless the caller displays it.
+    fn validate<'a>(&'a self, actual: &'a T) -> Result<(), Explanation<'a, Self, T>>
+    where
+        Self: Sized,
+    {
+        if self.check(actual) {
+            Ok(())
+        } else {
+            Err(Explanation::new(self, actual))
+        }
+    }
+
     /// Displays what the expression expects.
     fn description(&self) -> Description<'_, Self, T>
     where

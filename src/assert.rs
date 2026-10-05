@@ -1,4 +1,4 @@
-use crate::{Explanation, Expr};
+use crate::Expr;
 
 pub struct Assert;
 
@@ -9,8 +9,8 @@ impl Assert {
         T: ?Sized,
         C: Expr<T>,
     {
-        if !constraint.check(actual) {
-            panic!("{}", Explanation::new(&constraint, actual));
+        if let Err(why) = constraint.validate(actual) {
+            panic!("{why}");
         }
     }
 }

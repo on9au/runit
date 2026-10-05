@@ -27,6 +27,8 @@ impl<E: Expr<T> + ?Sized, T: ?Sized> Debug for Explanation<'_, E, T> {
     }
 }
 
+impl<E: Expr<T> + ?Sized, T: ?Sized> core::error::Error for Explanation<'_, E, T> {}
+
 /// Displays what an expression expects. See [`Expr::description`].
 pub struct Description<'a, E: ?Sized, T: ?Sized> {
     expr: &'a E,

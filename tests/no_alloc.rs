@@ -247,3 +247,31 @@ fn custom_expr_without_allocations() {
         "Expected either:\n  - Expected even\n  - Expected 7, got 5"
     );
 }
+
+#[test]
+fn new_conditions_check_and_explain_without_allocating() {
+    let words = ["alpha", "beta", "gamma"];
+    let e = Is::all(Is::length(Is::in_range(4..=5)).and().not().starts_with("x"))
+        .and()
+        .contains("beta")
+        .and()
+        .field("first", |w: &[&str; 3]| &w[0], Is::ends_with("a"))
+        .and()
+        .property("count", |w: &[&str; 3]| w.len(), Is::greater_than(2))
+        .named("word list")
+        .and()
+        .satisfies("sorted", |w: &[&str; 3]| w.is_sorted());
+    let mut buf = StackBuf::<256>::new();
+    let (res, n) = count_allocs(|| {
+        assert!(e.validate(&words).is_ok());
+        let bad = ["alpha", "beta", "zeta-long"];
+        let err = e.validate(&bad).unwrap_err();
+        write!(buf, "{err}")
+    });
+    assert_eq!(n, 0);
+    res.unwrap();
+    assert_eq!(
+        buf.as_str(),
+        "word list: Item at index 2: Expected length in range 4..=5, got 9"
+    );
+}
