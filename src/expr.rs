@@ -48,23 +48,20 @@ pub trait Expr<T: ?Sized> {
         f.write_str("\n  - ")?;
         write!(Indented(f), "{}", Explanation::new(self, actual))
     }
+}
 
-    /// Displays why `actual` fails.
-    fn explanation<'a>(&'a self, actual: &'a T) -> Explanation<'a, Self, T>
-    where
-        Self: Sized,
-    {
-        Explanation::new(self, actual)
-    }
-
+/// Conveniences for checking and displaying any [`Expr`], including trait objects.
+///
+/// Blanket-implemented for every expression, sized or not, so `rule.validate(x)` works the
+/// same on `Is::equal_to(1)`, a `&dyn Expr<T>` and a `Box<dyn Expr<T>>`. These live outside
+/// [`Expr`] because on a trait object the trait's own methods would need `Self: Sized`.
+/// Bring it into scope with `use runit::prelude::*`.
+pub trait ExprExt<T: ?Sized>: Expr<T> {
     /// Checks `actual`, returning why it fails as the error.
     ///
     /// The error borrows the expression and the value, so nothing is formatted or
     /// allocated unless the caller displays it.
-    fn validate<'a>(&'a self, actual: &'a T) -> Result<(), Explanation<'a, Self, T>>
-    where
-        Self: Sized,
-    {
+    fn validate<'a>(&'a self, actual: &'a T) -> Result<(), Explanation<'a, Self, T>> {
         if self.check(actual) {
             Ok(())
         } else {
@@ -72,14 +69,18 @@ pub trait Expr<T: ?Sized> {
         }
     }
 
+    /// Displays why `actual` fails.
+    fn explanation<'a>(&'a self, actual: &'a T) -> Explanation<'a, Self, T> {
+        Explanation::new(self, actual)
+    }
+
     /// Displays what the expression expects.
-    fn description(&self) -> Description<'_, Self, T>
-    where
-        Self: Sized,
-    {
+    fn description(&self) -> Description<'_, Self, T> {
         Description::new(self)
     }
 }
+
+impl<T: ?Sized, E: Expr<T> + ?Sized> ExprExt<T> for E {}
 
 macro_rules! forward_expr {
     ($ptr:ty) => {

@@ -7,7 +7,7 @@ use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
 use std::fmt::{self, Formatter, Write};
 
-use runit::{And, Assert, Equal, Explanation, Expr, Is, Not, Or};
+use runit::{And, Assert, Equal, Explanation, Expr, ExprExt, Is, Not, Or};
 
 struct Counting;
 

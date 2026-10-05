@@ -1,4 +1,4 @@
-use crate::Expr;
+use crate::{Expr, ExprExt};
 
 pub struct Assert;
 

@@ -5,7 +5,7 @@
 //!
 //! Run with `cargo run --example access_policy`.
 
-use runit::{Description, Expr, Is};
+use runit::{Expr, ExprExt, Is};
 
 struct User {
     name: &'static str,
@@ -166,7 +166,7 @@ fn main() {
 
     println!("POLICIES");
     for (action, policy) in &policies {
-        println!("  {action:<7} {}", Description::new(*policy));
+        println!("  {action:<7} {}", policy.description());
     }
 
     for doc in [&report, &handbook] {

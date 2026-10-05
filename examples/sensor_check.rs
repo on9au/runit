@@ -13,7 +13,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 mod firmware {
     use core::fmt::{self, Write};
 
-    use runit::{Description, Expr, Is, Named};
+    use runit::{Expr, ExprExt, Is, Named};
 
     #[derive(Debug, Clone, Copy)]
     pub struct Reading {
@@ -121,7 +121,7 @@ mod firmware {
         pub fn banner(&self, out: &mut impl Write) -> fmt::Result {
             writeln!(out, "monitoring:")?;
             for rule in self.named() {
-                writeln!(out, "  {:<5} {}", rule.name, Description::new(rule.expr))?;
+                writeln!(out, "  {:<5} {}", rule.name, rule.expr.description())?;
             }
             Ok(())
         }
@@ -141,7 +141,7 @@ mod firmware {
             }
             writeln!(out, "FAULT x{faults}")?;
             for rule in self.named() {
-                if let Err(why) = Expr::validate(&rule.expr, frame) {
+                if let Err(why) = rule.expr.validate(frame) {
                     writeln!(out, "  [{}] {why}", rule.name)?;
                 }
             }

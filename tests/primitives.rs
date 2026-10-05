@@ -1,7 +1,7 @@
 mod common;
 
 use common::{Const, EvalExt, Probe};
-use runit::{AlwaysFalse, And, Equal, Expr, IsNone, Not, Or};
+use runit::{AlwaysFalse, And, Equal, Expr, ExprExt, IsNone, Not, Or};
 
 const ALWAYS_FALSE_MSG: &str = "Condition will always fail.";
 

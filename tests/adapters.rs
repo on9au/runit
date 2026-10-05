@@ -2,7 +2,7 @@
 
 use std::fmt::{self, Formatter};
 
-use runit::{AlwaysFalse, Description, Equal, Explanation, Expr, Is, IsNone, Not};
+use runit::{AlwaysFalse, Description, Equal, Explanation, Expr, ExprExt, Is, IsNone, Not};
 
 #[test]
 fn explanation_displays_failure_message() {
@@ -35,18 +35,10 @@ fn explanation_new_works_for_dyn_exprs() {
 }
 
 #[test]
-fn explanation_method_works_on_dyn_via_reference() {
-    // `&dyn Expr<T>` is itself a sized `Expr<T>`, so the convenience methods apply
-    // when called through the reference's impl.
+fn explanation_and_description_work_directly_on_dyn() {
     let e: &dyn Expr<i32> = &Equal { value: 2 };
-    assert_eq!(
-        <&dyn Expr<i32> as Expr<i32>>::explanation(&e, &1).to_string(),
-        "Expected 2, got 1"
-    );
-    assert_eq!(
-        <&dyn Expr<i32> as Expr<i32>>::description(&e).to_string(),
-        "equal to 2"
-    );
+    assert_eq!(e.explanation(&1).to_string(), "Expected 2, got 1");
+    assert_eq!(e.description().to_string(), "equal to 2");
 }
 
 #[test]
@@ -92,7 +84,7 @@ fn description_debug_matches_display() {
     let d = Not {
         inner: Equal { value: 1 },
     };
-    let d = <_ as Expr<i32>>::description(&d);
+    let d = <_ as ExprExt<i32>>::description(&d);
     assert_eq!(format!("{d:?}"), "not equal to 1");
 }
 

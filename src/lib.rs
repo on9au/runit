@@ -21,6 +21,11 @@ pub use collections::{AllItems, AnyItem, Contains, HasLength, IsEmpty, Items, Le
 pub use combinators::{And, Not, Or};
 pub use compare::{AtLeast, AtMost, GreaterThan, InRange, LessThan};
 pub use display::{Description, Explanation};
-pub use expr::{Expr, Precedence};
+pub use expr::{Expr, ExprExt, Precedence};
 pub use primitives::{AlwaysFalse, Equal, IsNone, NoAlternatives};
 pub use strings::{ContainsStr, EndsWith, StartsWith};
+
+/// The everyday imports: `use runit::prelude::*;`.
+pub mod prelude {
+    pub use crate::{Assert, Expr, ExprExt, Is};
+}

@@ -9,7 +9,7 @@
 use std::fmt;
 use std::process::ExitCode;
 
-use runit::{Expr, Is, Named};
+use runit::{Expr, ExprExt, Is, Named};
 
 #[derive(Default)]
 struct Config {

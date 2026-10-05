@@ -3,7 +3,7 @@ use core::marker::PhantomData;
 
 use crate::Expr;
 
-/// Displays why a value fails an expression. See [`Expr::explanation`].
+/// Displays why a value fails an expression. See [`ExprExt::explanation`](crate::ExprExt::explanation).
 pub struct Explanation<'a, E: ?Sized, T: ?Sized> {
     expr: &'a E,
     actual: &'a T,
@@ -29,7 +29,7 @@ impl<E: Expr<T> + ?Sized, T: ?Sized> Debug for Explanation<'_, E, T> {
 
 impl<E: Expr<T> + ?Sized, T: ?Sized> core::error::Error for Explanation<'_, E, T> {}
 
-/// Displays what an expression expects. See [`Expr::description`].
+/// Displays what an expression expects. See [`ExprExt::description`](crate::ExprExt::description).
 pub struct Description<'a, E: ?Sized, T: ?Sized> {
     expr: &'a E,
     actual: PhantomData<fn(&T)>,
