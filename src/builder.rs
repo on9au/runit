@@ -3,8 +3,8 @@ use core::fmt::{self, Formatter};
 use crate::combinators::{describe_or, explain_or, precedence_or};
 use crate::{
     AllItems, And, AnyItem, AtLeast, AtMost, Contains, ContainsStr, EndsWith, Equal, Expr, Field,
-    GreaterThan, HasLength, InRange, IsEmpty, IsNone, LessThan, Named, NoAlternatives, Not, Or,
-    Precedence, Property, Satisfies, StartsWith,
+    GreaterThan, HasLength, InRange, IsEmpty, IsNone, LessThan, Named, NoAlternatives, Not, OneOf,
+    Or, Precedence, Property, Satisfies, StartsWith,
 };
 
 /// Query
@@ -224,21 +224,29 @@ conditions! {
 
     /// A value for which `pred` returns `true`, described as `description`.
     ///
-    /// Annotate the closure's argument type, e.g. `|x: &i32| x % 2 == 0`.
-    fn satisfies[D, T: ?Sized, F: Fn(&T) -> bool](description: D, pred: F)
-        -> Satisfies<D, F> => Satisfies { description, pred };
+    /// Annotate the closure's argument type, e.g. `|x: &i32| x % 2 == 0`. The closure stays
+    /// generic over lifetimes, so this works for types like `Request<'a>` too.
+    fn satisfies[D, F](description: D, pred: F) -> Satisfies<D, F> => Satisfies { description, pred };
 
     /// A value whose part borrowed by `get` matches `expr`, reported as `name`.
     ///
     /// Annotate the closure's argument type, e.g. `|u: &User| &u.age`.
+    ///
+    /// For a type with a lifetime parameter, such as `Request<'a>`, a closure here is tied
+    /// to one specific lifetime. To build an `impl for<'a> Expr<Request<'a>>`, pass a `fn`
+    /// item instead, e.g. `fn roles<'a>(r: &'a Request<'_>) -> &'a [Role]`.
     fn field[N, T: ?Sized, U: ?Sized, F: Fn(&T) -> &U, E](name: N, get: F, expr: E)
         -> Field<N, F, E> => Field { name, get, expr };
 
     /// A value whose part computed by `get` matches `expr`, reported as `name`.
     ///
-    /// Annotate the closure's argument type, e.g. `|s: &String| s.chars().count()`.
-    fn property[N, T: ?Sized, U, F: Fn(&T) -> U, E](name: N, get: F, expr: E)
-        -> Property<N, F, E> => Property { name, get, expr };
+    /// Annotate the closure's argument type, e.g. `|s: &String| s.chars().count()`. The
+    /// closure stays generic over lifetimes, so this works for types like `Request<'a>` too.
+    fn property[N, F, E](name: N, get: F, expr: E) -> Property<N, F, E> => Property { name, get, expr };
+
+    /// Equal to one of `values`, e.g. `Is::one_of(["debug", "info"])`. Compares across
+    /// types, so a `String` can be checked against `&str` values.
+    fn one_of[V](values: V) -> OneOf<V> => OneOf { values };
 
     /// `expr`, described as `name` in place of its full expansion.
     fn named[N, E](name: N, expr: E) -> Named<N, E> => Named { name, expr };

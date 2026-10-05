@@ -235,3 +235,26 @@ where
         describe_grouped(&self.expr, Precedence::Atom, f)
     }
 }
+
+/// Equal to one of `values`.
+pub struct OneOf<V> {
+    pub values: V,
+}
+
+impl<T, V> Expr<T> for OneOf<V>
+where
+    T: PartialEq<V::Item> + Debug + ?Sized,
+    V: Items + Debug,
+{
+    fn check(&self, actual: &T) -> bool {
+        self.values.items().any(|value| actual == value)
+    }
+
+    fn explain(&self, actual: &T, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Expected one of {:?}, got {:?}", self.values, actual)
+    }
+
+    fn describe(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "one of {:?}", self.values)
+    }
+}

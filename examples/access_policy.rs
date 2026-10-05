@@ -35,7 +35,12 @@ fn admin<'a>() -> impl Expr<Request<'a>> {
 }
 
 fn owner<'a>() -> impl Expr<Request<'a>> {
-    Is::satisfies("owner", |r: &Request| r.doc.owner == r.user.name)
+    Is::property(
+        "(doc owner, user)",
+        |r: &Request| (r.doc.owner, r.user.name),
+        Is::satisfies("the same", |(owner, user): &(&str, &str)| owner == user),
+    )
+    .named("owner")
 }
 
 fn doc_locked<'a>() -> impl Expr<Request<'a>> {

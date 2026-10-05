@@ -1,4 +1,4 @@
-use core::fmt::{self, Display, Formatter};
+use core::fmt::{self, Debug, Display, Formatter};
 
 use crate::combinators::describe_grouped;
 use crate::{Expr, Precedence};
@@ -11,12 +11,16 @@ pub struct Satisfies<D, F> {
 
 impl<T, D, F> Expr<T> for Satisfies<D, F>
 where
-    T: ?Sized,
+    T: Debug + ?Sized,
     D: Display,
     F: Fn(&T) -> bool,
 {
     fn check(&self, actual: &T) -> bool {
         (self.pred)(actual)
+    }
+
+    fn explain(&self, actual: &T, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "Expected {}, got {:?}", self.description, actual)
     }
 
     fn describe(&self, f: &mut Formatter<'_>) -> fmt::Result {

@@ -17,7 +17,7 @@ mod strings;
 pub use adapters::{Field, Named, Property, Satisfies};
 pub use assert::Assert;
 pub use builder::{Is, Negated, PendingAnd, PendingOr, Query, Start, Step};
-pub use collections::{AllItems, AnyItem, Contains, HasLength, IsEmpty, Items, Length};
+pub use collections::{AllItems, AnyItem, Contains, HasLength, IsEmpty, Items, Length, OneOf};
 pub use combinators::{And, Not, Or};
 pub use compare::{AtLeast, AtMost, GreaterThan, InRange, LessThan};
 pub use display::{Description, Explanation};

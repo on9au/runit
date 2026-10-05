@@ -6,10 +6,10 @@
 //!
 //! Run with `cargo run --example config_check -- examples/server.conf`.
 
-use std::fmt::{self, Formatter};
+use std::fmt;
 use std::process::ExitCode;
 
-use runit::{Description, Expr, Is};
+use runit::{Expr, Is, Named};
 
 #[derive(Default)]
 struct Config {
@@ -30,32 +30,21 @@ struct Tls {
     key: String,
 }
 
-// ------------------------------------------------------------------ a custom expression
+// ------------------------------------------------------------------ rules
 
-/// A string equal to one of a fixed set of choices.
-struct OneOf(&'static [&'static str]);
+/// A rule keeps its name beside the expression, so a report can show each separately.
+type Rule = Named<&'static str, Box<dyn Expr<Config>>>;
 
-impl Expr<String> for OneOf {
-    fn check(&self, actual: &String) -> bool {
-        self.0.contains(&actual.as_str())
-    }
-
-    fn explain(&self, actual: &String, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Expected one of {:?}, got {:?}", self.0, actual)
-    }
-
-    fn describe(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "one of {:?}", self.0)
+fn rule(name: &'static str, expr: impl Expr<Config> + 'static) -> Rule {
+    Named {
+        name,
+        expr: Box::new(expr),
     }
 }
 
-// ------------------------------------------------------------------ rules
-
-type Rule = Box<dyn Expr<Config>>;
-
 fn rules() -> Vec<Rule> {
     vec![
-        Box::new(Is::named(
+        rule(
             "host is a bare hostname",
             Is::field(
                 "host",
@@ -69,49 +58,49 @@ fn rules() -> Vec<Rule> {
                     .not()
                     .contains_str("://"),
             ),
-        )),
-        Box::new(Is::named(
+        ),
+        rule(
             "port is unprivileged",
             Is::field("port", |c: &Config| &c.port, Is::in_range(1024..=49151)),
-        )),
-        Box::new(Is::named(
+        ),
+        rule(
             "worker count is sane",
             Is::field("workers", |c: &Config| &c.workers, Is::in_range(1..=64)),
-        )),
-        Box::new(Is::named(
+        ),
+        rule(
             "log level is known",
             Is::field(
                 "log_level",
                 |c: &Config| &c.log_level,
-                OneOf(&["error", "warn", "info", "debug", "trace"]),
+                Is::one_of(["error", "warn", "info", "debug", "trace"]),
             ),
-        )),
-        Box::new(Is::named(
+        ),
+        rule(
             "timeout is between 100ms and 60s",
             Is::field(
                 "timeout_ms",
                 |c: &Config| &c.timeout_ms,
                 Is::in_range(100..=60_000),
             ),
-        )),
-        Box::new(Is::named(
+        ),
+        rule(
             "request body limit is at most 10 MiB",
             Is::field(
                 "max_body_kb",
                 |c: &Config| &c.max_body_kb,
                 Is::at_most(10 * 1024),
             ),
-        )),
-        Box::new(Is::named(
+        ),
+        rule(
             "CORS origins are set and all HTTPS",
             Is::field(
                 "allowed_origins",
                 |c: &Config| &c.allowed_origins,
                 Is::not().empty().and().all(Is::starts_with("https://")),
             ),
-        )),
+        ),
         // Only checked when TLS is on: "disabled, or both files are PEM".
-        Box::new(Is::named(
+        rule(
             "TLS files are PEM",
             Is::field(
                 "tls.enabled",
@@ -122,8 +111,8 @@ fn rules() -> Vec<Rule> {
             .field("tls.cert", |c: &Config| &c.tls.cert, Is::ends_with(".pem"))
             .and()
             .field("tls.key", |c: &Config| &c.tls.key, Is::ends_with(".pem")),
-        )),
-        Box::new(Is::named(
+        ),
+        rule(
             "TLS on whenever the port is 443",
             Is::field("port", |c: &Config| &c.port, Is::not().equal_to(443))
                 .or()
@@ -132,7 +121,7 @@ fn rules() -> Vec<Rule> {
                     |c: &Config| &c.tls.enabled,
                     Is::equal_to(true),
                 ),
-        )),
+        ),
     ]
 }
 
@@ -233,18 +222,12 @@ fn main() -> ExitCode {
     let rules = rules();
     let mut failed = 0;
     for rule in &rules {
-        let name = Description::new(&**rule);
-        match rule.validate(&config) {
-            Ok(()) => println!("  \u{2713} {name}"),
+        match rule.expr.validate(&config) {
+            Ok(()) => println!("  \u{2713} {}", rule.name),
             Err(why) => {
                 failed += 1;
-                // Named rules explain as "<name>: <reason>"; the name is already shown.
-                let why = why.to_string();
-                let reason = why.split_once(": ").map_or(why.as_str(), |(_, r)| r);
-                println!(
-                    "  \u{2717} {name}\n      {}",
-                    reason.replace('\n', "\n      ")
-                );
+                let why = why.to_string().replace('\n', "\n      ");
+                println!("  \u{2717} {}\n      {why}", rule.name);
             }
         }
     }

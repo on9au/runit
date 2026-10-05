@@ -30,7 +30,7 @@ fn satisfies_uses_its_description() {
     assert_eq!(EvalExt::<i32>::describe_string(&e), "even or equal to 7");
     assert_eq!(
         e.eval(&3).message,
-        "Expected either:\n  - Expected even\n  - Expected 7, got 3"
+        "Expected either:\n  - Expected even, got 3\n  - Expected 7, got 3"
     );
 }
 
@@ -139,4 +139,89 @@ fn policy_example() {
         can_edit.eval(&user("x", 20, &[])).message,
         "Expected either:\n  - admin: roles: Expected collection containing \"admin\", but it did not\n  - owner: name: Expected \"root\", got \"x\""
     );
+}
+
+// ---------------------------------------------------------------- lifetimes
+
+struct Request<'a> {
+    user: &'a User,
+    target: &'a str,
+}
+
+fn user_age<'a>(r: &'a Request<'_>) -> &'a u32 {
+    &r.user.age
+}
+
+/// Rules over a type with a lifetime parameter, valid for every lifetime.
+fn adult_self_service() -> impl for<'a> Expr<Request<'a>> {
+    Is::satisfies("self service", |r: &Request| r.target == r.user.name)
+        .and()
+        .property(
+            "target length",
+            |r: &Request| r.target.len(),
+            Is::at_most(8),
+        )
+        .and()
+        .field("age", user_age, Is::at_least(18))
+}
+
+impl std::fmt::Debug for Request<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} -> {}", self.user.name, self.target)
+    }
+}
+
+#[test]
+fn higher_ranked_rules_over_borrowed_types() {
+    let rule = adult_self_service();
+    let ann = user("ann", 30, &[]);
+    let kid = user("kid", 9, &[]);
+    for (u, target, pass) in [
+        (&ann, "ann", true),
+        (&ann, "bob", false),
+        (&kid, "kid", false),
+    ] {
+        let target = String::from(target);
+        assert_eq!(
+            rule.check(&Request {
+                user: u,
+                target: &target
+            }),
+            pass
+        );
+    }
+    let target = String::from("bob");
+    assert_eq!(
+        rule.eval(&Request {
+            user: &ann,
+            target: &target
+        })
+        .message,
+        "Expected self service, got ann -> bob"
+    );
+}
+
+// ---------------------------------------------------------------- one_of
+
+#[test]
+fn one_of_compares_across_types() {
+    let e = Is::one_of(["debug", "info"]);
+    assert!(e.eval(&String::from("info")).pass);
+    assert!(e.eval(&"debug").pass);
+    assert_eq!(
+        e.eval(&String::from("loud")).message,
+        r#"Expected one of ["debug", "info"], got "loud""#
+    );
+    assert_eq!(
+        EvalExt::<&str>::describe_string(&e),
+        r#"one of ["debug", "info"]"#
+    );
+}
+
+#[test]
+fn one_of_accepts_slices_and_vecs() {
+    let allowed: &[i32] = &[1, 3, 5];
+    check_ints(Is::one_of(allowed), |x| [1, 3, 5].contains(&x));
+    check_ints(Is::not().one_of(vec![0, 2]), |x| x != 0 && x != 2);
+    assert!(!Is::one_of(Vec::<i32>::new()).eval(&1).pass);
 }
